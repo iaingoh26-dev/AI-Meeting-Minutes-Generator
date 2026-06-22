@@ -1,279 +1,155 @@
 # 📝 AI Meeting Minutes Generator
 
-A Google Colab notebook that transcribes an audio recording of a meeting and automatically generates structured meeting minutes including summary, discussion points, takeaways, and action items using open-source and OpenAI models.
+Ever wish you could skip re-listening to a long meeting recording just to write up the notes? This project does it for you. Give it an audio file, and it will transcribe what was said and automatically produce structured meeting minutes — summary, key points, decisions, and action items.
 
-> ✅ Runs on a free/low-cost **T4 GPU** runtime in Google Colab.
+> ✅ Runs for free on Google Colab using a T4 GPU (no local setup needed).
 
 ---
 
 ## 📋 Table of Contents
 
-- [Overview](#overview)
-- [Setup](#setup)
-- [Step 1 — Transcribe Audio](#step-1--transcribe-audio)
-  - [Option A: Open Source (Whisper via HuggingFace)](#option-a-open-source-whisper-via-huggingface)
-  - [Option B: OpenAI API](#option-b-openai-api)
-- [Step 2 — Generate Meeting Minutes (LLaMA)](#step-2--generate-meeting-minutes-llama)
+- [What Does It Do?](#what-does-it-do)
+- [How It Works — In Plain English](#how-it-works--in-plain-english)
+- [Before You Start](#before-you-start)
+- [Step-by-Step Guide](#step-by-step-guide)
+  - [1. Install the tools](#1-install-the-tools)
+  - [2. Connect your Google Drive](#2-connect-your-google-drive)
+  - [3. Get your audio file](#3-get-your-audio-file)
+  - [4. Transcribe the audio](#4-transcribe-the-audio)
+  - [5. Generate the meeting minutes](#5-generate-the-meeting-minutes)
+- [Choosing a Transcription Method](#choosing-a-transcription-method)
 - [Sample Data](#sample-data)
-- [Known Issues & Notes](#known-issues--notes)
+- [Troubleshooting](#troubleshooting)
 - [Credits](#credits)
 
 ---
 
-## Overview
+## What Does It Do?
 
-This notebook implements a two-step pipeline:
+You give it a meeting recording (.mp3), and it produces a neatly formatted document like this:
 
 ```
-Audio File (.mp3)
-      │
-      ▼
- [STEP 1] Transcription
-  ├── Option A: Whisper (open-source, runs on GPU)
-  └── Option B: OpenAI gpt-4o-mini-transcribe (API)
-      │
-      ▼
- [STEP 2] Meeting Minutes Generation
-  └── LLaMA 3.2-3B-Instruct (4-bit quantized, local)
-      │
-      ▼
- Markdown Meeting Minutes
-  ├── Summary (attendees, location, date)
-  ├── Discussion points
-  ├── Takeaways
-  └── Action items with owners
+## Meeting Summary
+Date: March 5, 2024 | Location: Denver City Hall
+
+## Discussion Points
+- Budget allocation for Q2 infrastructure projects
+- ...
+
+## Takeaways
+- Council agreed to defer the zoning vote
+- ...
+
+## Action Items
+- [ ] John to submit revised proposal by March 12
+- [ ] Finance team to review budget amendments
 ```
 
 ---
 
-## Setup
+## How It Works — In Plain English
 
-### Install Dependencies
+The notebook runs two steps automatically:
 
-```bash
-pip install -q --upgrade bitsandbytes accelerate transformers==4.57.6
-```
+**Step 1 — Listen & Transcribe**
+It listens to your audio file and converts the spoken words into text. Think of it like a very accurate auto-caption tool.
 
-### Imports
+**Step 2 — Understand & Summarise**
+It feeds that text to an AI language model (similar to ChatGPT, but running locally on the Colab machine) and asks it to write up proper meeting minutes.
 
-```python
-import os
-import requests
-from IPython.display import Markdown, display, update_display
-from openai import OpenAI
-from google.colab import drive
-from huggingface_hub import login
-from google.colab import userdata
-from transformers import AutoTokenizer, AutoModelForCausalLM, TextStreamer, BitsAndBytesConfig
-import torch
-```
-
-### Model
-
-```python
-LLAMA = "meta-llama/Llama-3.2-3B-Instruct"
-```
-
-### Mount Google Drive & Set Audio Path
-
-Place your audio file in Google Drive under `MyDrive/llms/` named `denver_extract.mp3`:
-
-```python
-from google.colab import drive
-drive.mount("/content/drive")
-audio_filename = "/content/drive/MyDrive/llms/denver_extract.mp3"
-```
-
-### Authenticate
-
-```python
-from huggingface_hub import login
-hf_token = userdata.get('HF_TOKEN')
-login(hf_token, add_to_git_credential=True)
-
-audio_file = open(audio_filename, "rb")
-```
-
-> 💡 Store `HF_TOKEN` and `OPENAI_API_KEY` as Colab secrets under **Runtime → Manage secrets**.
+No audio ever leaves your Colab session unless you choose to use OpenAI's transcription service (see below).
 
 ---
 
-## Step 1 — Transcribe Audio
+## Before You Start
 
-Two options are provided. You can compare their outputs side by side:
+You'll need:
 
-```python
-display(Markdown(open_source_transcription))
-print("\n\n")
-display(Markdown(transcription))  # OpenAI version
-```
+- A **free Google account** (to use Google Colab and Google Drive)
+- A **Hugging Face account** — free at [huggingface.co](https://huggingface.co) — to download the AI models
+- *(Optional)* An **OpenAI API key** if you want to use OpenAI's transcription instead of the free open-source option
 
-### Option A: Open Source (Whisper via HuggingFace)
+**Set up your secret keys in Colab:**
 
-Runs locally on the T4 GPU — no API key required.
-
-```python
-from transformers import pipeline
-
-pipe = pipeline(
-    "automatic-speech-recognition",
-    model="openai/whisper-medium.en",
-    dtype=torch.float16,
-    device='cuda',
-    return_timestamps=True
-)
-
-result = pipe(audio_filename)
-transcription = result["text"]
-open_source_transcription = transcription
-print(transcription)
-```
-
-### Option B: OpenAI API
-
-Uses `gpt-4o-mini-transcribe` — fast and high quality, requires an OpenAI API key.
-
-```python
-AUDIO_MODEL = "gpt-4o-mini-transcribe"
-
-openai_api_key = userdata.get('OPENAI_API_KEY')
-openai = OpenAI(api_key=openai_api_key)
-
-transcription = openai.audio.transcriptions.create(
-    model=AUDIO_MODEL,
-    file=audio_file,
-    response_format="text"
-)
-print(transcription)
-```
+Go to the 🔑 **Secrets** panel (padlock icon in the left sidebar) and add:
+- `HF_TOKEN` — your Hugging Face token (found at huggingface.co → Settings → Access Tokens)
+- `OPENAI_API_KEY` — only needed if using OpenAI transcription
 
 ---
 
-## Step 2 — Generate Meeting Minutes (LLaMA)
+## Step-by-Step Guide
 
-Uses LLaMA 3.2-3B-Instruct quantized to 4-bit to generate structured minutes from the transcription.
+### 1. Install the tools
 
-### Prompt
+The first cell in the notebook installs everything automatically. Just run it and wait about a minute.
 
-```python
-system_message = """
-You produce minutes of meetings from transcripts, with summary, key discussion points,
-takeaways and action items with owners, in markdown format without code blocks.
-"""
-
-user_prompt = f"""
-Below is an extract transcript of a Denver council meeting.
-Please write minutes in markdown without code blocks, including:
-- a summary with attendees, location and date
-- discussion points
-- takeaways
-- action items with owners
-
-Transcription:
-{transcription}
-"""
-
-messages = [
-    {"role": "system", "content": system_message},
-    {"role": "user", "content": user_prompt}
-]
+```
+Installs: bitsandbytes, accelerate, transformers
 ```
 
-### Quantization Config
+> ⚠️ The version of `transformers` is fixed to `4.57.6` on purpose — newer versions can cause compatibility errors on Colab. Don't change it.
 
-```python
-quant_config = BitsAndBytesConfig(
-    load_in_4bit=True,
-    bnb_4bit_use_double_quant=True,
-    bnb_4bit_compute_dtype=torch.bfloat16,
-    bnb_4bit_quant_type="nf4"
-)
-```
+---
 
-### Load Model & Generate
+### 2. Connect your Google Drive
 
-```python
-tokenizer = AutoTokenizer.from_pretrained(LLAMA)
-tokenizer.pad_token = tokenizer.eos_token
-inputs = tokenizer.apply_chat_template(messages, return_tensors="pt").to("cuda")
-streamer = TextStreamer(tokenizer)
+The notebook needs to read your audio file from Google Drive. When you run this cell, a popup will ask you to sign in and grant permission — just follow the prompts.
 
-model = AutoModelForCausalLM.from_pretrained(
-    LLAMA,
-    device_map="auto",
-    quantization_config=quant_config
-)
+---
 
-outputs = model.generate(inputs, max_new_tokens=2000, streamer=streamer)
-response = tokenizer.decode(outputs[0])
-display(Markdown(response))
-```
+### 3. Get your audio file
+
+You have two options:
+
+**Option A — Use the provided sample** (recommended for first-timers)
+Download this Denver City Council meeting extract and upload it to your Google Drive:
+👉 [Download denver_extract.mp3](https://drive.google.com/file/d/1N_kpSojRR5RYzupz6nqM8hMSoEF_R7pU/view?usp=sharing)
+
+Place it here on your Drive: `My Drive → llms → denver_extract.mp3`
+
+**Option B — Use your own recording**
+Put your own `.mp3` file in the same folder and update the filename in the notebook.
+
+---
+
+### 4. Transcribe the audio
+
+This step converts the audio into text. You have two methods to choose from — pick one (see [Choosing a Transcription Method](#choosing-a-transcription-method) below).
+
+The transcription will be printed to the screen so you can review it before moving on.
+
+---
+
+### 5. Generate the meeting minutes
+
+This is where the magic happens. The notebook sends the transcribed text to a local AI model (LLaMA 3.2) with instructions to produce structured minutes. 
+
+The model runs entirely on the Colab machine — no data is sent anywhere externally.
+
+You'll see the minutes being written out in real time as the model generates them, then a nicely formatted version is displayed at the end.
+
+---
+
+## Choosing a Transcription Method
+
+| | Option A: Free (Open Source) | Option B: OpenAI API |
+|---|---|---|
+| **Cost** | Free | Costs a small amount per minute of audio |
+| **Needs API key?** | No | Yes (`OPENAI_API_KEY`) |
+| **Speed** | Moderate | Fast |
+| **Quality** | Very good | Excellent |
+| **Privacy** | Audio stays on Colab | Audio sent to OpenAI servers |
+
+**Recommendation:** Start with Option A (free). Switch to Option B if you need faster or higher-quality transcription.
 
 ---
 
 ## Sample Data
 
-The notebook uses an extract from **Denver City Council meeting audio**.
+The included example uses a real excerpt from a **Denver City Council meeting**.
 
 | Resource | Link |
 |----------|------|
-| Audio extract (MP3) | [Google Drive](https://drive.google.com/file/d/1N_kpSojRR5RYzupz6nqM8hMSoEF_R7pU/view?usp=sharing) |
-| Full HuggingFace dataset | [MeetingBank](https://huggingface.co/datasets/huuuyeah/meetingbank) |
-| Full audio dataset | [MeetingBank Audio](https://huggingface.co/datasets/huuuyeah/MeetingBank_Audio/tree/main) |
-
-You can also **record your own audio** and use that instead.
-
----
-
-## Known Issues & Notes
-
-| # | Issue | Impact |
-|---|-------|--------|
-| 1 | `tokenizer.decode(outputs[0])` decodes the **entire sequence** including the input prompt | The displayed Markdown will include the prompt tokens before the actual response; slice with `outputs[0][inputs.shape[-1]:]` to get only the generated text |
-| 2 | `transformers==4.57.6` is pinned | Required for compatibility with `bitsandbytes` on Colab — do not upgrade without testing |
-| 3 | `.to("cuda")` is hardcoded | Will crash without a GPU; safe on Colab T4 but not portable |
-| 4 | `audio_file` file handle is opened once and never closed | If OpenAI transcription is retried, the handle may be exhausted; re-open before each call |
-| 5 | `TextStreamer` streams to stdout only | Output is printed live during generation but not captured for downstream use; use `TextIteratorStreamer` if you need to process or display the output in a UI (see Credits) |
-
-### Fix for Issue #1 — Decode only the generated response
-
-```python
-# Instead of:
-response = tokenizer.decode(outputs[0])
-
-# Use:
-response = tokenizer.decode(outputs[0][inputs.shape[-1]:], skip_special_tokens=True)
-```
-
-### Fix for Issue #4 — Re-open audio file before OpenAI call
-
-```python
-audio_file = open(audio_filename, "rb")
-transcription = openai.audio.transcriptions.create(
-    model=AUDIO_MODEL, file=audio_file, response_format="text"
-)
-audio_file.close()
-```
-
-### ⚠️ Common Colab Runtime Error
-
-If you encounter:
-```
-Runtime error: CUDA is required but not available for bitsandbytes.
-```
-
-This is **not** a package version problem. Google silently swapped your runtime. Fix:
-
-1. **Kernel → Disconnect and delete runtime**
-2. Reload the notebook and **Edit → Clear All Outputs**
-3. Reconnect to a fresh **T4 GPU** runtime
-4. Confirm GPU via **View resources** (top-right menu)
-5. Re-run all cells from the top
-
----
-
-## Credits
-
-- **Sample data:** Denver City Council via [MeetingBank](https://huggingface.co/datasets/huuuyeah/meetingbank)
-- **Streaming Gradio UI variation** by student **Emad S.** — uses `TextIteratorStreamer` and background threads for a real-time streaming chat interface:  
-  [View on Colab](https://colab.research.google.com/drive/1Ja5zyniyJo5y8s1LKeCTSkB2xyDPOt6D)
+|  Audio extract (the file you need) | [Download from Google Drive](https://drive.google.com/file/d/1N_kpSojRR5RYzupz6nqM8hMSoEF_R7pU/view?usp=sharing) |
+|  Full meeting dataset | [MeetingBank on HuggingFace](https://huggingface.co/datasets/huuuyeah/meetingbank) |
+|  Full audio dataset | [MeetingBank Audio](https://huggingface.co/datasets/huuuyeah/MeetingBank_Audio/tree/main) |
