@@ -1,6 +1,6 @@
 # 📝 AI Meeting Minutes Generator
 
-A Google Colab notebook that transcribes an audio recording of a meeting and automatically generates structured meeting minutes — including summary, discussion points, takeaways, and action items — using open-source and OpenAI models.
+A Google Colab notebook that transcribes an audio recording of a meeting and automatically generates structured meeting minutes including summary, discussion points, takeaways, and action items using open-source and OpenAI models.
 
 > ✅ Runs on a free/low-cost **T4 GPU** runtime in Google Colab.
 
